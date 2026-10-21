@@ -20,7 +20,9 @@ set product_id = m.product_id
 from (
   select
     d2.id as deal_id,
-    min(sp.id) as product_id
+    -- `having count(*) = 1` guarantees a single match, so any deterministic pick is exact.
+    -- `min(uuid)` does not exist in Postgres, which made this migration fail on a fresh database.
+    (array_agg(sp.id))[1] as product_id
   from public.deals d2
   inner join public.supplier_products sp
     on sp.supplier_id = d2.supplier_id
