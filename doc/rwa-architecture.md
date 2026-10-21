@@ -305,14 +305,17 @@ files; the TypeScript suite asserts exactly those values.
 | Investor B | Same, **only for own rows** — never A's | Same |
 | PyME | Issuance fields for own deal, document commitments, aggregates | Opt in / request issuance |
 | Supplier | Same as PyME for the deal they own (via `supplier_companies.owner_id`) | Nothing |
-| Admin | All rows; `financial_snapshot`, `fees`, `opaque_ref`, issuance events | Issue, activate, audit |
+| Admin | All rows; `financial_snapshot`, `fees`, `opaque_ref` via `admin_get_rwa_issuance()`, issuance events | Issue, activate, audit |
 | Service role (server) | All rows | Confirm contribution, record settlement |
 
 Enforcement:
 
 - RLS enabled on all seven tables; **no** table DML granted to `anon`/`authenticated`.
 - Column-level `select` grants exclude `financial_snapshot`, `fees`, `issuance_operation_id`,
-  `opaque_ref` and `idempotency_key`.
+  `opaque_ref` and `idempotency_key` — for admins too. Admin-only detail (snapshot, fees, document
+  opaque references) is reachable only through `admin_get_rwa_issuance()`, which calls
+  `assert_admin()` and is granted to `authenticated`; direct table reads of those columns are
+  denied even for an admin session.
 - Confirmed principal, units, recipient identity and settlement state can only be written by
   `security definer` RPCs: `rwa_confirm_contribution()` and `rwa_record_position_settlement()`
   require the `service_role` JWT claim, and `rwa_issue_credit_asset()`/`rwa_activate_issuance()`

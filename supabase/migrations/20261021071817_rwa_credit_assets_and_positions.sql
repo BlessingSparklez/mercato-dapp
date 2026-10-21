@@ -1167,6 +1167,76 @@ $$;
 -- Read RPCs
 -- ---------------------------------------------------------------------------
 
+-- Full issuance detail for the platform operator. Column grants deliberately keep
+-- `financial_snapshot`, `fees` and document `opaque_ref` away from every authenticated client,
+-- so admins read them through this explicitly gated RPC instead.
+create or replace function public.admin_get_rwa_issuance(p_credit_asset_id uuid)
+returns table (
+  credit_asset_id uuid,
+  deal_id uuid,
+  network text,
+  registry_contract text,
+  asset_id text,
+  issuance_identity text,
+  asset_code text,
+  asset_issuer text,
+  asset_decimals smallint,
+  principal_atomic bigint,
+  return_numerator bigint,
+  return_denominator bigint,
+  display_yield_bps integer,
+  term_days integer,
+  maturity_policy text,
+  scheduled_maturity_at timestamptz,
+  actual_due_at timestamptz,
+  financial_snapshot jsonb,
+  financial_snapshot_hash text,
+  fees jsonb,
+  state text,
+  issued_at timestamptz,
+  activated_at timestamptz,
+  documents jsonb
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_documents jsonb;
+begin
+  perform public.assert_admin();
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'kind', d.doc_kind,
+        'opaque_ref', d.opaque_ref,
+        'content_hash', d.content_hash,
+        'byte_length', d.byte_length,
+        'canonicalization', d.canonicalization
+      )
+      order by d.created_at
+    ),
+    '[]'::jsonb
+  )
+  into v_documents
+  from public.rwa_document_commitments d
+  where d.credit_asset_id = p_credit_asset_id;
+
+  return query
+  select
+    a.id, a.deal_id, a.network, a.registry_contract, a.asset_id, a.issuance_identity,
+    a.asset_code, a.asset_issuer, a.asset_decimals, a.principal_atomic,
+    a.return_numerator, a.return_denominator, a.display_yield_bps, a.term_days,
+    a.maturity_policy, a.scheduled_maturity_at, a.actual_due_at,
+    a.financial_snapshot, a.financial_snapshot_hash, a.fees, a.state,
+    a.issued_at, a.activated_at, v_documents
+  from public.rwa_credit_assets a
+  where a.id = p_credit_asset_id;
+end;
+$$;
+
 -- The caller's own positions with their settlement totals.
 create or replace function public.rwa_get_my_positions()
 returns table (
@@ -1298,6 +1368,9 @@ grant execute on function public.rwa_record_position_settlement(
 
 revoke execute on function public.rwa_get_my_positions() from public, anon;
 grant execute on function public.rwa_get_my_positions() to authenticated;
+
+revoke execute on function public.admin_get_rwa_issuance(uuid) from public, anon;
+grant execute on function public.admin_get_rwa_issuance(uuid) to authenticated;
 
 revoke execute on function public.get_rwa_deal_summary(uuid) from public;
 grant execute on function public.get_rwa_deal_summary(uuid) to anon, authenticated;

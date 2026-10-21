@@ -5,7 +5,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(31);
+select plan(34);
 
 -- ---------------------------------------------------------------------------
 -- Seed
@@ -308,6 +308,13 @@ select throws_ok(
   'the private financial snapshot is not readable by deal parties'
 );
 
+select throws_ok(
+  $$ select * from public.admin_get_rwa_issuance((select id from public.rwa_credit_assets limit 1)) $$,
+  '42501',
+  'forbidden',
+  'a PyME cannot use the admin issuance RPC as a read shortcut'
+);
+
 reset role;
 
 -- ---------------------------------------------------------------------------
@@ -368,6 +375,22 @@ select is(
   (select viewer_scope from public.get_rwa_deal_summary('77777777-7777-4777-8777-777777777777')),
   'admin',
   'the summary RPC reports the admin scope'
+);
+
+select is(
+  (select jsonb_typeof(financial_snapshot)
+     from public.admin_get_rwa_issuance(
+       (select id from public.rwa_credit_assets limit 1))),
+  'object',
+  'an admin reads the frozen snapshot through the admin RPC'
+);
+
+select is(
+  (select jsonb_array_length(documents)
+     from public.admin_get_rwa_issuance(
+       (select id from public.rwa_credit_assets limit 1))),
+  1,
+  'the admin RPC returns document commitments without exposing document bytes'
 );
 
 select throws_ok(
